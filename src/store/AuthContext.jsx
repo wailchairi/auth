@@ -1,35 +1,40 @@
 import { createContext, useContext, useState, useEffect } from "react";
-import { loginUser} from "../services/authAPI"; // 🧠 getUserInfo added for /auth/me
+import { loginUser } from "../services/authAPI";
 import { useNavigate } from "react-router-dom";
+import {jwtDecode} from "jwt-decode";
 
-// Create context
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
   const navigate = useNavigate();
 
-  // State
-  const [token, setToken] = useState(() => localStorage.getItem("token"));
-  const [refreshToken, setRefreshToken] = useState(() => localStorage.getItem("refreshToken"));
-  const [user, setUser] = useState(() => {
-    const storedUser = localStorage.getItem("user");
-    return storedUser ? JSON.parse(storedUser) : null;
-  });
+  const [token, setToken] = useState(null);
+  const [refreshToken, setRefreshToken] = useState(null);
+  const [user, setUser] = useState(null);
 
-  // ✅ Login (username + password for DummyJSON)
+  // ✅ Login
   const login = async (username, password) => {
     const data = await loginUser({ username, password });
 
-    // Save tokens
-    localStorage.setItem("token", data.token);
-    localStorage.setItem("refreshToken", data.refreshToken); // 🧠 save refreshToken
-    localStorage.setItem("user", JSON.stringify(data.user));
+    // 🧠 Defensive check — only set token if it's valid
+    if (data.token && data.token !== "undefined") {
+      localStorage.setItem("token", data.token);
+      setToken(data.token);
+    }
+    
+    
 
-    setToken(data.token);
-    setRefreshToken(data.refreshToken);
-    setUser(data.user);
+    if (data.refreshToken) {
+      localStorage.setItem("refreshToken", data.refreshToken);
+      setRefreshToken(data.refreshToken);
+    }
 
-    navigate("/home", { replace: true }); // Redirect to home page after login
+    if (data.user) {
+      localStorage.setItem("user", JSON.stringify(data.user));
+      setUser(data.user);
+    }
+
+    navigate("/home", { replace: true });
   };
 
   // 🔓 Logout
@@ -45,16 +50,34 @@ export const AuthProvider = ({ children }) => {
     navigate("/");
   };
 
-  // 🧠 Restore state from localStorage on mount
+  // 🔁 Rehydrate from localStorage
   useEffect(() => {
     const storedToken = localStorage.getItem("token");
     const storedUser = localStorage.getItem("user");
     const storedRefreshToken = localStorage.getItem("refreshToken");
 
-    if (storedToken && storedUser) {
-      setToken(storedToken);
+    // ✅ Validate token
+    if (storedToken && storedToken !== "undefined" && storedToken !== "null") {
+      const decoded = jwtDecode(storedToken);
+      const now = Date.now() / 1000;
+  
+      if (decoded.exp < now) {
+        logout(); // Optional: force logout
+      } else {
+        setToken(storedToken);
+      }
+    }
+
+    if (storedRefreshToken && storedRefreshToken !== "undefined") {
       setRefreshToken(storedRefreshToken);
-      setUser(JSON.parse(storedUser));
+    }
+
+    if (storedUser) {
+      try {
+        setUser(JSON.parse(storedUser));
+      } catch (err) {
+        console.error("Failed to parse stored user", err);
+      }
     }
   }, []);
 
@@ -65,5 +88,4 @@ export const AuthProvider = ({ children }) => {
   );
 };
 
-// Shortcut hook
 export const useAuth = () => useContext(AuthContext);

@@ -13,7 +13,7 @@ export const loginUser = async ({ username, password }) => {
   const res = await API.post("auth/login", {
     username,
     password,
-    expiresInMins: 5, // optional
+    expiresInMins: 1, // optional
   });
 
   const data = res.data;

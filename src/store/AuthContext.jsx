@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect } from "react";
-import { loginUser } from "../services/authAPI";
+import { loginUser , refreshSession } from "../services/authAPI";
 import { useNavigate } from "react-router-dom";
 import {jwtDecode} from "jwt-decode";
 
@@ -55,31 +55,54 @@ export const AuthProvider = ({ children }) => {
     const storedToken = localStorage.getItem("token");
     const storedUser = localStorage.getItem("user");
     const storedRefreshToken = localStorage.getItem("refreshToken");
-
-    // ✅ Validate token
-    if (storedToken && storedToken !== "undefined" && storedToken !== "null") {
-      const decoded = jwtDecode(storedToken);
-      const now = Date.now() / 1000;
   
-      if (decoded.exp < now) {
-        logout(); // Optional: force logout
-      } else {
-        setToken(storedToken);
+    const checkAndRefresh = async () => {
+      if (storedToken && storedToken !== "undefined" && storedToken !== "null") {
+        const decoded = jwtDecode(storedToken);
+        const now = Date.now() / 1000;
+  
+        if (decoded.exp < now) {
+          // ✅ Token expired — use your existing refreshSession()
+          if (storedRefreshToken) {
+            try {
+              const data = await refreshSession(storedRefreshToken);
+  
+              // 🔁 Save and set new token/refreshToken
+              localStorage.setItem("token", data.accessToken);
+              localStorage.setItem("refreshToken", data.refreshToken);
+  
+              setToken(data.accessToken);
+              setRefreshToken(data.refreshToken);
+  
+              console.log("🔁 Token refreshed via refreshSession()");
+            } catch (err) {
+              console.error("❌ Refresh failed, logging out..."+ err);
+              logout();
+            }
+          } else {
+            logout();
+          }
+        } else {
+          setToken(storedToken);
+        }
       }
-    }
-
-    if (storedRefreshToken && storedRefreshToken !== "undefined") {
-      setRefreshToken(storedRefreshToken);
-    }
-
-    if (storedUser) {
-      try {
-        setUser(JSON.parse(storedUser));
-      } catch (err) {
-        console.error("Failed to parse stored user", err);
+  
+      if (storedUser) {
+        try {
+          setUser(JSON.parse(storedUser));
+        } catch (err) {
+          console.error("Failed to parse user", err);
+        }
       }
-    }
+  
+      if (storedRefreshToken && storedRefreshToken !== "undefined") {
+        setRefreshToken(storedRefreshToken);
+      }
+    };
+  
+    checkAndRefresh();
   }, []);
+  
 
   return (
     <AuthContext.Provider value={{ user, token, refreshToken, login, logout }}>
